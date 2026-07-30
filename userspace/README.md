@@ -1,6 +1,3 @@
-### 3. `userspace/README.md`
-
-```markdown
 # Userspace Utilities (`userspace/`)
 
 ## Overview
@@ -16,7 +13,9 @@ This directory contains the userland tools for controlling, testing, and benchma
 
 ## Building
 Build all userspace binaries using CMake or the provided top-level Makefile:
+
 ```bash
 mkdir build && cd build
 cmake ..
 make
+```

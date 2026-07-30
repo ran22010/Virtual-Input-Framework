@@ -1,6 +1,3 @@
-### 4. `scripts/README.md`
-
-```markdown
 # Automation & System Scripts (`scripts/`)
 
 ## Overview
@@ -19,9 +16,11 @@ Helper scripts for environment setup, kernel module lifecycle control, and syste
   * Custom `udev` configuration rule to automatically set proper device permissions and user group membership (`input` group) whenever `/dev/vinput` is created.
 
 ## Usage
+
 ```bash
 # Load module and initialize device node
 sudo ./scripts/load.sh
 
 # Unload module and teardown node
 sudo ./scripts/unload.sh
+```
