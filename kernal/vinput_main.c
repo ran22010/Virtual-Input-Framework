@@ -53,33 +53,45 @@ static ssize_t custom_write(struct file* file_pointer,
     return bytes_to_copy;
 };
 
+static int custom_open(struct inode* ei, struct file* file_pointer){
+    return 0;
+};
+
+static int custom_release(struct inode* ei, struct file* file_pointer){
+    return 0;
+};
+
+static long	custom_ioctl(struct file* file_pointer, unsigned int cmd, unsigned long arg){
+    return 0;
+};
+
 struct proc_ops custom_proc_ops = {
     .proc_read = custom_read,
     .proc_write = custom_write,
-    .proc_open,
-    .proc_release,
-    .proc_ioctl
+    .proc_open = custom_open,
+    .proc_release = custom_release,
+    .proc_ioctl = custom_ioctl
 };
 
 static int vif_module_init (void) {
-    printk("first_module_init: entry\n");
+    printk("vif_module_init: entry\n");
 
     custom_proc_node = proc_create("ldd_driver",
                                 0666,
                                 NULL,
                                 &custom_proc_ops);
     
-    printk("first_module_init: exit\n");
+    printk("vif_module_init: exit\n");
 
     return 0;
 }
 
 static void vif_module_exit (void) {
-    printk("first_module_exit: entry\n");
+    printk("vif_module_exit: entry\n");
 
     proc_remove(custom_proc_node);
 
-    printk("first_module_exit: exit\n");
+    printk("vif_module_exit: exit\n");
 }
 
 module_init(vif_module_init);
