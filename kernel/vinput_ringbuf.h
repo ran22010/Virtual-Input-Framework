@@ -1,5 +1,5 @@
-#ifndef _VINPUT_RINGBUF_H
-#define _VINPUT_RINGBUF_H
+#ifndef VINPUT_RINGBUF_H
+#define VINPUT_RINGBUF_H
 
 #ifdef __KERNEL__
 #include <linux/types.h>

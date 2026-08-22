@@ -1,5 +1,5 @@
-#ifndef _UAPI_VINPUT_UAPI_H
-#define _UAPI_VINPUT_UAPI_H
+#ifndef UAPI_VINPUT_UAPI_H
+#define UAPI_VINPUT_UAPI_H
 
 #ifdef __KERNEL__
 #include <linux/types.h>
