@@ -9,7 +9,7 @@
 #include "uapi/vinput_uapi.h"
 #include "vinput_macro.h"
 
-int vinput_play_macro(struct vinput_macros *macros, int index){
+int vinput_play_macro(struct vinput_macro_event *head){
     if (index < 0 || index >= MAX_MACROS){
         return -EINVAL;
     }
@@ -83,17 +83,7 @@ int vinput_create_macro(struct vinput_macros *macros, struct vinput_event *buffe
     return 0;
 }
 
-int vinput_free_macro(struct vinput_macros *macros, int index){
-    if (index < 0 || index >= MAX_MACROS){
-        return -EINVAL;
-    }
-
-    if (macros == NULL){
-        return -EINVAL;
-    }
-    
-    vinput_macro_event *head = macros->heads[index];
-    
+int vinput_free_macro(struct vinput_macro_event *head){
     if (head == NULL){
         return -EINVAL;
     }
