@@ -6,21 +6,21 @@
 #include <stdint.h>
 #endif
 
+#include <linux/delay.h>
+#include <linux/ktime.h>
+
 #include "uapi/vinput_uapi.h"
 #include "vinput_macro.h"
 
-int vinput_play_macro(struct vinput_macro_event *head){
-    if (index < 0 || index >= MAX_MACROS){
-        return -EINVAL;
-    }
 
-    if (macros == NULL){
-        return -EINVAL;
-    }
-
-    struct vinput_macro_event *curr_event = macros->heads[index];
+void vinput_play_macro(struct vinput_macro_event *head){
+    struct vinput_macro_event *curr_event = head;
 
     while (curr_event) { //if null stops
+        //create new event with updated timestamp
+        usleep_range(curr->delay_ns / 1000, curr->delay_ns / 1000 + 1);
+        struct vinput_event event = curr_event->event;
+        event.timestamp_ns = ktime_get_ns();
         //push event onto some queue for execution
         //wait curr_event->ts 
         //curr_event = curr_event->next;
@@ -71,7 +71,7 @@ int vinput_create_macro(struct vinput_macros *macros, struct vinput_event *buffe
         __u64 curr_time = buffer[i].timestamp_ns;
 
         if (prev_time > 0){
-            curr->delay = curr_time - prev_time;
+            curr->delay_ns = curr_time - prev_time;
         }
         prev_time = curr_time;
         prev = curr;

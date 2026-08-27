@@ -15,7 +15,7 @@
 
 
 struct vinput_macro_event{
-    __u64 delay;
+    __u64 delay_ns;
     struct vinput_event event;
     struct vinput_macro_event *next;
 };
