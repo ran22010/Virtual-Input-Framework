@@ -28,6 +28,7 @@
 void vinput_ringbuf_init(struct vinput_ringbuf *rb){
     rb->head = 0;
     rb->tail = 0;
+    spin_lock_init(&rb->push_lock);
 }
 
 bool vinput_ringbuf_is_empty(const struct vinput_ringbuf *rb){
@@ -42,13 +43,15 @@ bool vinput_ringbuf_is_full(const struct vinput_ringbuf *rb){
 }
 
 int vinput_ringbuf_push(struct vinput_ringbuf *rb, const struct vinput_event *event){
-    //check if full
-    //add event to head
-    //increment head
-    unsigned int head = rb->head;
-    //unsigned int tail = READ_ONCE(rb->tail);
+    unsigned long flags;
+    unsigned int head;
+
+    spin_lock_irqsave(&rb->push_lock, flags);
+
+    head = rb->head;
 
     if (vinput_ringbuf_is_full(rb)){
+        spin_unlock_irqrestore(&rb->push_lock, flags);
         return -ENOSPC;
     }
 
@@ -58,6 +61,8 @@ int vinput_ringbuf_push(struct vinput_ringbuf *rb, const struct vinput_event *ev
 
     WRITE_ONCE(rb->head, head + 1);
 
+    spin_unlock_irqrestore(&rb->push_lock, flags);
+    
     return 0;
 }
 
