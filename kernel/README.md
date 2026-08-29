@@ -9,7 +9,7 @@ This folder contains the source code for the Linux Kernel Module (LKM) character
 * **`vinput_macro.c` / `.h`**: Kernel-space state machine for evaluating macro triggers and expanding inputs into multi-event sequences.
 * **`vinput_sched.c` / `.h`**: Event scheduler utilizing high-resolution timers (`hrtimer`) and kernel workqueues for rate limiting and paced injection.
 * **`vinput_stats.c` / `.h`**: Atomic telemetry logic maintaining real-time statistics exposed via `ioctl` and `procfs` (`/proc/vinput_stats`).
-* **`vinput_uinput.c` / `.h`**: Integration layer for creating and managing virtual input devices (`input_dev`) using kernel `uinput` interfaces.
+* **`vinput_input.c` / `.h`****: Integration layer for capturing and processing Linux input events using `input_handler` and `input_handle` interfaces.
 
 ## Building
 Compile the kernel module against your running kernel headers:

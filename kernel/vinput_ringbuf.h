@@ -18,6 +18,7 @@ struct vinput_ringbuf{
     struct vinput_event buffer[BUFFER_SIZE];
     unsigned int head;
     unsigned int tail;
+    spinlock_t push_lock;
 };
 
 void vinput_ringbuf_init(struct vinput_ringbuf *rb);

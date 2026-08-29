@@ -17,13 +17,11 @@ void vinput_play_macro(struct vinput_macro_event *head){
     struct vinput_macro_event *curr_event = head;
 
     while (curr_event) { //if null stops
-        //create new event with updated timestamp
         usleep_range(curr->delay_ns / 1000, curr->delay_ns / 1000 + 1);
         struct vinput_event event = curr_event->event;
         event.timestamp_ns = ktime_get_ns();
-        //push event onto some queue for execution
-        //wait curr_event->ts 
-        //curr_event = curr_event->next;
+        vinput_ringbuf_push(&event); 
+        curr_event = curr_event->next;
     }
 }
 
