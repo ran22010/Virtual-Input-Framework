@@ -8,9 +8,9 @@ obj-m += vinput.o
 vinput-objs := vinput_main.o \
                vinput_ringbuf.o \
                vinput_macro.o \
-               vinput_sched.o \
+               vinput_input.o \
                vinput_stats.o \
-               vinput_uinput.o
+               vinput_virtual.o
 
 # Fallback to current kernel headers if KDIR isn't explicitly set
 KDIR ?= /lib/modules/$(shell uname -r)/build

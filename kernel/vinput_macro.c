@@ -8,19 +8,21 @@
 
 #include <linux/delay.h>
 #include <linux/ktime.h>
+#include <linux/slab.h>
 
 #include "uapi/vinput_uapi.h"
 #include "vinput_macro.h"
+#include "vinput_ringbuf.h"
 
 
-void vinput_play_macro(struct vinput_macro_event *head){
+void vinput_play_macro(struct vinput_ringbuf *rb, struct vinput_macro_event *head){
     struct vinput_macro_event *curr_event = head;
 
     while (curr_event) { //if null stops
-        usleep_range(curr->delay_ns / 1000, curr->delay_ns / 1000 + 1);
+        usleep_range(curr_event->delay_ns / 1000, curr_event->delay_ns / 1000 + 1);
         struct vinput_event event = curr_event->event;
         event.timestamp_ns = ktime_get_ns();
-        vinput_ringbuf_push(&event); 
+        vinput_ringbuf_push(rb, &event); 
         curr_event = curr_event->next;
     }
 }
@@ -49,7 +51,7 @@ int vinput_create_macro(struct vinput_macros *macros, struct vinput_event *buffe
     __u64 prev_time = 0;
 
     for (int i = 0; i < length; i++){
-        curr = (vinput_macro_event *)kzalloc(sizeof(vinput_macro_event), GFP_KERNEL);
+        curr = (struct vinput_macro_event *)kzalloc(sizeof(struct vinput_macro_event), GFP_KERNEL);
         
         if (curr == NULL){
             return -ENOMEM;
@@ -87,13 +89,10 @@ int vinput_free_macro(struct vinput_macro_event *head){
     }
 
     while (head != NULL){
-        vinput_macro_event *next = head->next;
+        struct vinput_macro_event *next = head->next;
         kfree(head);
         head = next;
     }
-
-    macros->heads[index] = NULL;
-    macros->length--;
 
     return 0;
 }
