@@ -11,7 +11,7 @@ This folder contains the source code for the Linux Kernel Module (LKM) character
 * **`vinput_stats.c` / `.h`**: Atomic telemetry logic maintaining real-time statistics exposed via `ioctl` and `procfs` (`/proc/vinput_stats`).
 * **`vinput_input.c` / `.h`****: Integration layer for capturing and processing Linux input events using `input_handler` and `input_handle` interfaces.
 
-## Building - test
+## Building
 Compile the kernel module against your running kernel headers:
 ```bash
 make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
