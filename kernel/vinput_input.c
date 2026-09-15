@@ -4,9 +4,12 @@
 #include <linux/ktime.h>
 
 #include "vinput_input.h"
+#include "vinput_ringbuf.h"
 #include "uapi/vinput_uapi.h"
 
 static struct vinput_device_manager device_manager;
+
+static struct vinput_ringbuf *vinput_input_rb;
 
 static int vinput_input_get_device_id(struct input_dev *dev)
 {
@@ -43,12 +46,32 @@ static void vinput_input_remove_device(struct input_dev *dev)
         device_manager.devices[dev_id] = NULL;
 }
 
+static bool vinput_input_is_virtual(struct input_dev *dev)
+{
+    if (dev->id.bustype != BUS_VIRTUAL)
+        return false;
+
+    if (dev->phys == NULL)
+        return false;
+
+    if (!strcmp(dev->phys, "vinput/keyboard"))
+        return true;
+
+    if (!strcmp(dev->phys, "vinput/mouse"))
+        return true;
+
+    return false;
+}
+
 static int vinput_input_connect(struct input_handler *handler,
                                 struct input_dev *dev,
                                 const struct input_device_id *id)
 {
     struct input_handle *handle;
     int ret;
+
+    if (vinput_input_is_virtual(dev))
+        return -ENODEV;
 
     handle = kzalloc(sizeof(*handle), GFP_KERNEL);
     if (!handle)
@@ -70,8 +93,8 @@ static int vinput_input_connect(struct input_handler *handler,
     if (ret)
         goto err_remove_device;
 
-    pr_info("vinput_input: connected to %s\n",
-            dev_name(&dev->dev));
+    printk("vinput_input: connected to %s\n",
+           dev_name(&dev->dev));
 
     return 0;
 
@@ -115,9 +138,9 @@ static void vinput_input_event(struct input_handle *handle,
     event.reserved = 0;
     event.value = value;
 
-    vinput_ringbuf_push(&event);
+    vinput_ringbuf_push(vinput_input_rb, &event);
 
-    pr_debug("vinput_input: %s: type=%u code=%u value=%d\n",
+    printk("vinput_input: %s: type=%u code=%u value=%d\n",
              dev_name(&handle->dev->dev),
              type,
              code,
@@ -139,12 +162,14 @@ static struct input_handler vinput_input_handler = {
     .id_table   = vinput_input_ids,
 };
 
-int vinput_input_init(void)
+int vinput_input_init(struct vinput_ringbuf *input_rb)
 {
+    vinput_input_rb = input_rb;
     return input_register_handler(&vinput_input_handler);
 }
 
 void vinput_input_exit(void)
 {
+    vinput_input_rb = NULL;
     input_unregister_handler(&vinput_input_handler);
 }

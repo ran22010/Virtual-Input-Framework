@@ -3,6 +3,8 @@
 
 #include <linux/input.h>
 
+#include "vinput_ringbuf.h"
+
 #define MAX_INPUT_DEVICES 256
 
 struct vinput_device_manager {
@@ -10,19 +12,8 @@ struct vinput_device_manager {
     unsigned int count;
 };
 
-/*
- * Initialize the input event listener.
- *
- * Registers the input_handler with the Linux input subsystem.
- */
-int vinput_input_init(void);
+int vinput_input_init(struct vinput_ringbuf *input_rb);
 
-/*
- * Stop listening for input events.
- *
- * Unregisters the input_handler and disconnects
- * all associated input handles.
- */
 void vinput_input_exit(void);
 
 #endif
