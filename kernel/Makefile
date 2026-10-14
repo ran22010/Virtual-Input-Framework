@@ -9,7 +9,6 @@ vinput-objs := vinput_main.o \
                vinput_ringbuf.o \
                vinput_macro.o \
                vinput_input.o \
-               vinput_stats.o \
                vinput_virtual.o
 
 # Fallback to current kernel headers if KDIR isn't explicitly set

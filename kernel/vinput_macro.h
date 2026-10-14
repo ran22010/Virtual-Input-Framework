@@ -26,9 +26,9 @@ struct vinput_macros{
     int length;
 };
 
-void vinput_play_macro(struct vinput_ringbuf *rb, struct vinput_macro_event *head);
+int vinput_play_macro(struct vinput_ringbuf *rb, struct vinput_macro_event *head);
 int vinput_create_macro(struct vinput_macros *macros, struct vinput_event *buffer, int length, int index);
-int vinput_free_macro(struct vinput_macro_event *head);
+int vinput_free_macro(struct vinput_macros *macros, int index);
 
 
 #endif 
