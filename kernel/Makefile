@@ -7,7 +7,6 @@ obj-m += vinput.o
 # Specify all object files that compose vinput.ko
 vinput-objs := vinput_main.o \
                vinput_ringbuf.o \
-               vinput_macro.o \
                vinput_input.o \
                vinput_virtual.o
 
