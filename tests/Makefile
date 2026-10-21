@@ -1,56 +1,20 @@
-# Compiler & Build Flags
-CC      ?= gcc
-CFLAGS  ?= -O2 -Wall -Wextra -I../include -I../kernel
+# This directory is meant to be placed at the repository root: test/
+# Supports either include/uapi/vinput_uapi.h or kernel/uapi/vinput_uapi.h.
+CC ?= cc
+CFLAGS ?= -O2 -g
+CPPFLAGS += -D_DEFAULT_SOURCE -I../include -I../kernel
+CFLAGS += -std=gnu11 -Wall -Wextra -Werror
 
-# 1. Automatically discover all unit test source files (test_*.c)
-TEST_SRCS = $(wildcard test_*.c)
-TEST_BINS = $(TEST_SRCS:.c=)
+TESTS := test_vinput_io test_vinput_output test_vinput_capture
 
-# Default target: build all discovered unit test binaries
-all: $(TEST_BINS)
+.PHONY: all run clean
+all: $(TESTS)
 
-# 2. Individual Unit Test Dependencies (linking required kernel sources)
-test_ringbuf: test_ringbuf.c ../kernel/vinput_ringbuf.c
-	$(CC) $(CFLAGS) $^ -o $@
+$(TESTS): %: %.c test_common.c test_common.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< test_common.c -o $@
 
-test_macro: test_macro.c ../kernel/vinput_macro.c ../kernel/vinput_ringbuf.c
-	$(CC) $(CFLAGS) $^ -o $@
+run: all
+	./run_tests.sh
 
-test_sched: test_sched.c ../kernel/vinput_sched.c ../kernel/vinput_ringbuf.c
-	$(CC) $(CFLAGS) $^ -o $@
-
-test_stats: test_stats.c ../kernel/vinput_stats.c
-	$(CC) $(CFLAGS) $^ -o $@
-
-# Generic fallback rule for standalone unit tests with no kernel C dependencies
-test_%: test_%.c
-	$(CC) $(CFLAGS) $< -o $@
-
-# 3. Run all C unit tests in sequence
-run-unit: all
-	@echo "=========================================="
-	@echo " Running C Unit Test Suite"
-	@echo "=========================================="
-	@for test in $(TEST_BINS); do \
-		echo "--> Executing $$test"; \
-		./$$test || exit 1; \
-	done
-	@echo "=========================================="
-	@echo " All Unit Tests Passed!"
-	@echo "=========================================="
-
-# 4. Run end-to-end kernel integration tests (requires root/sudo)
-run-integration:
-	@echo "=========================================="
-	@echo " Running System Integration Test"
-	@echo "=========================================="
-	@sudo ./integration_test.sh
-
-# Run everything (Unit tests first, then Integration tests)
-run-all: run-unit run-integration
-
-# Clean test binaries and temporary output files
 clean:
-	rm -f $(TEST_BINS) *.o *.log
-
-.PHONY: all run-unit run-integration run-all clean
+	rm -f $(TESTS)

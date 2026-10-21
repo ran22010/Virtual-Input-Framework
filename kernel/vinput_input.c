@@ -169,7 +169,8 @@ static void vinput_input_event(struct input_handle *handle,
 
 static const struct input_device_id vinput_input_ids[] = {
     {
-        .driver_info = 1,
+        .flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+        .evbit = { BIT_MASK(EV_SYN) },
     },
     { },
 };
