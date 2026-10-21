@@ -2,48 +2,70 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/ktime.h>
+#include <linux/spinlock.h>
+#include <linux/atomic.h>
+#include <linux/ratelimit.h>
 
 #include "vinput_input.h"
 #include "vinput_ringbuf.h"
 #include "uapi/vinput_uapi.h"
 
 static struct vinput_device_manager device_manager;
+static DEFINE_SPINLOCK(device_manager_lock);
+static atomic64_t dropped_events = ATOMIC64_INIT(0);
 
 static struct vinput_ringbuf *vinput_input_rb;
 
 static int vinput_input_get_device_id(struct input_dev *dev)
 {
+    unsigned long flags;
     unsigned int i;
+    int id = -1;
 
+    spin_lock_irqsave(&device_manager_lock, flags);
     for (i = 0; i < MAX_INPUT_DEVICES; i++) {
-        if (device_manager.devices[i] == dev)
-            return i;
+        if (device_manager.devices[i] == dev) {
+            id = i;
+            break;
+        }
     }
-
-    return -1;
+    spin_unlock_irqrestore(&device_manager_lock, flags);
+    return id;
 }
 
 static int vinput_input_add_device(struct input_dev *dev)
 {
+    unsigned long flags;
     unsigned int i;
+    int id = -ENOSPC;
 
+    spin_lock_irqsave(&device_manager_lock, flags);
     for (i = 0; i < MAX_INPUT_DEVICES; i++) {
-        if (device_manager.devices[i] == NULL) {
+        if (!device_manager.devices[i]) {
             device_manager.devices[i] = dev;
-            return i;
+            device_manager.count++;
+            id = i;
+            break;
         }
     }
-
-    return -ENOSPC;
+    spin_unlock_irqrestore(&device_manager_lock, flags);
+    return id;
 }
 
 static void vinput_input_remove_device(struct input_dev *dev)
 {
-    int dev_id;
+    unsigned long flags;
+    unsigned int i;
 
-    dev_id = vinput_input_get_device_id(dev);
-    if (dev_id >= 0)
-        device_manager.devices[dev_id] = NULL;
+    spin_lock_irqsave(&device_manager_lock, flags);
+    for (i = 0; i < MAX_INPUT_DEVICES; i++) {
+        if (device_manager.devices[i] == dev) {
+            device_manager.devices[i] = NULL;
+            device_manager.count--;
+            break;
+        }
+    }
+    spin_unlock_irqrestore(&device_manager_lock, flags);
 }
 
 static bool vinput_input_is_virtual(struct input_dev *dev)
@@ -138,18 +160,17 @@ static void vinput_input_event(struct input_handle *handle,
     event.reserved = 0;
     event.value = value;
 
-    vinput_ringbuf_push(vinput_input_rb, &event);
-
-    printk("vinput_input: %s: type=%u code=%u value=%d\n",
-             dev_name(&handle->dev->dev),
-             type,
-             code,
-             value);
+    if (vinput_ringbuf_push(vinput_input_rb, &event) == -ENOSPC) {
+        atomic64_inc(&dropped_events);
+        pr_warn_ratelimited("vinput_input: dropped %lld events (full ring buffer)\n",
+                            (long long)atomic64_read(&dropped_events));
+    }
 }
 
 static const struct input_device_id vinput_input_ids[] = {
     {
-        .driver_info = 1,
+        .flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+        .evbit = { BIT_MASK(EV_SYN) },
     },
     { },
 };
@@ -164,12 +185,21 @@ static struct input_handler vinput_input_handler = {
 
 int vinput_input_init(struct vinput_ringbuf *input_rb)
 {
+    int ret;
+
+    if (!input_rb)
+        return -EINVAL;
+
+    atomic64_set(&dropped_events, 0);
     vinput_input_rb = input_rb;
-    return input_register_handler(&vinput_input_handler);
+    ret = input_register_handler(&vinput_input_handler);
+    if (ret)
+        vinput_input_rb = NULL;
+    return ret;
 }
 
 void vinput_input_exit(void)
 {
-    vinput_input_rb = NULL;
     input_unregister_handler(&vinput_input_handler);
+    vinput_input_rb = NULL;
 }

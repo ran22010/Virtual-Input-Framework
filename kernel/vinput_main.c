@@ -6,13 +6,15 @@
 #include <linux/device.h>      // ADDED
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/mutex.h>
+#include <linux/input.h>
 
-#define BUFFER_SIZE 1024
+#include "vinput_ringbuf.h"
+#include "vinput_input.h"
+#include "vinput_virtual.h"
 
 struct my_device_data {
     struct cdev cdev;
-    char kernel_buffer[BUFFER_SIZE];
-    size_t buffer_length;
 };
 
 MODULE_LICENSE("GPL");
@@ -22,38 +24,109 @@ MODULE_DESCRIPTION("Virtual Input Framework");
 /* ADDED */
 static dev_t dev_num;
 static struct class *vif_class;
+static DEFINE_MUTEX(vif_read_lock);
+static DEFINE_MUTEX(vif_write_lock);
+static struct vinput_ringbuf input_rb;
+static struct vinput_ringbuf output_rb;
+/* Keep a popped event until copy_to_user succeeds. */
+static struct vinput_event pending_read_event;
+static bool pending_read_valid;
 
-/* CHANGED: replaced proc node with actual device object */
-static struct my_device_data my_device = {
-    .buffer_length = 0,
-};
+static struct my_device_data my_device;
 
+/* The device is a stream of complete struct vinput_event records. */
 static ssize_t custom_read(struct file *file_pointer,
                            char __user *user_space_buffer,
                            size_t count,
                            loff_t *offset)
 {
-    printk(KERN_INFO "custom_read: entry\n");
+    const size_t record_size = sizeof(struct vinput_event);
+    size_t copied = 0;
+    int ret;
 
-    struct my_device_data *my_data = file_pointer->private_data;
-    size_t bytes_to_copy;
-
-    if (*offset >= my_data->buffer_length)
+    if (!count)
         return 0;
+    if (count < record_size)
+        return -EINVAL;
 
-    bytes_to_copy = min(count,
-                        my_data->buffer_length - (size_t)*offset);
+    /* vinput_ringbuf_pop() supports only one consumer at a time. */
+    ret = mutex_lock_interruptible(&vif_read_lock);
+    if (ret)
+        return ret;
 
-    if (copy_to_user(user_space_buffer,
-                     my_data->kernel_buffer + *offset,
-                     bytes_to_copy))
-    {
-        return -EFAULT;
+    while (copied + record_size <= count) {
+        if (!pending_read_valid) {
+            ret = vinput_ringbuf_pop(&input_rb, &pending_read_event);
+            if (ret == -EAGAIN) {
+                if (copied)
+                    break;
+                if (file_pointer->f_flags & O_NONBLOCK)
+                    goto out;
+
+                ret = wait_event_interruptible(input_rb.not_empty,
+                        !vinput_ringbuf_is_empty(&input_rb));
+                if (ret)
+                    goto out;
+                continue;
+            }
+            if (ret)
+                goto out;
+            pending_read_valid = true;
+        }
+
+        if (copy_to_user(user_space_buffer + copied,
+                         &pending_read_event, record_size)) {
+            ret = -EFAULT;
+            goto out;
+        }
+
+        pending_read_valid = false;
+        copied += record_size;
     }
+    ret = copied;
+out:
+    mutex_unlock(&vif_read_lock);
+    return copied ? (ssize_t)copied : ret;
+}
 
-    *offset += bytes_to_copy;
+static bool vinput_valid_output_event(const struct vinput_event *event)
+{
+    if (event->dev_id >= MAX_INPUT_DEVICES || event->reserved)
+        return false;
 
-    return bytes_to_copy;
+    switch (event->type) {
+    case EV_SYN:
+        return event->code == SYN_REPORT && event->value == 0;
+    case EV_REL:
+        return event->code == REL_X || event->code == REL_Y ||
+               event->code == REL_WHEEL || event->code == REL_HWHEEL;
+    case EV_KEY:
+        if (event->code <= KEY_RESERVED || event->code >= KEY_MAX ||
+            event->value < 0 || event->value > 2)
+            return false;
+
+        /* Match the mouse buttons advertised by vinput_virtual.c. */
+        if (event->code >= BTN_MOUSE && event->code < BTN_JOYSTICK) {
+            if (event->value > 1)
+                return false;
+            switch (event->code) {
+            case BTN_LEFT:
+            case BTN_RIGHT:
+            case BTN_MIDDLE:
+            case BTN_SIDE:
+            case BTN_EXTRA:
+            case BTN_FORWARD:
+            case BTN_BACK:
+            case BTN_TASK:
+                return true;
+            default:
+                return false;
+            }
+        }
+        return true;
+    default:
+        return false;
+    }
 }
 
 static ssize_t custom_write(struct file *file_pointer,
@@ -61,27 +134,40 @@ static ssize_t custom_write(struct file *file_pointer,
                             size_t count,
                             loff_t *offset)
 {
-    printk(KERN_INFO "custom_write: entry\n");
+    const size_t record_size = sizeof(struct vinput_event);
+    struct vinput_event event;
+    size_t written = 0;
+    int ret;
 
-    struct my_device_data *my_data = file_pointer->private_data;
-    size_t bytes_to_copy;
+    if (!count)
+        return 0;
+    if (count % record_size)
+        return -EINVAL;
 
-    bytes_to_copy = min(count, (size_t)(BUFFER_SIZE - 1));
+    /* Prevent interleaving batches from separate writers. */
+    ret = mutex_lock_interruptible(&vif_write_lock);
+    if (ret)
+        return ret;
 
-    if (copy_from_user(my_data->kernel_buffer,
-                       user_space_buffer,
-                       bytes_to_copy))
-    {
-        return -EFAULT;
+    while (written < count) {
+        if (copy_from_user(&event, user_space_buffer + written,
+                           record_size)) {
+            ret = -EFAULT;
+            break;
+        }
+        if (!vinput_valid_output_event(&event)) {
+            ret = -EINVAL;
+            break;
+        }
+
+        ret = vinput_ringbuf_push(&output_rb, &event);
+        if (ret)
+            break;
+        written += record_size;
     }
 
-    my_data->kernel_buffer[bytes_to_copy] = '\0';
-    my_data->buffer_length = bytes_to_copy;
-
-    printk(KERN_INFO "custom_write received: %s\n",
-           my_data->kernel_buffer);
-
-    return bytes_to_copy;
+    mutex_unlock(&vif_write_lock);
+    return written ? (ssize_t)written : ret;
 }
 
 static int custom_open(struct inode *inode,
@@ -95,9 +181,7 @@ static int custom_open(struct inode *inode,
 
     file_pointer->private_data = my_data;
 
-    printk(KERN_INFO "custom_open\n");
-
-    return 0;
+    return nonseekable_open(inode, file_pointer);
 }
 
 static int custom_release(struct inode *inode,
@@ -114,9 +198,7 @@ static long custom_ioctl(struct file *file_pointer,
                          unsigned int cmd,
                          unsigned long arg)
 {
-    printk(KERN_INFO "custom_ioctl\n");
-
-    return 0;
+    return -ENOTTY;
 }
 
 /* CHANGED: proc_ops -> file_operations */
@@ -168,11 +250,25 @@ static int vif_module_init(void)
     }
 
     /* Create /dev/vif_driver */
-    device_create(vif_class,
-                  NULL,
-                  dev_num,
-                  NULL,
-                  "vif_driver");
+    {
+        struct device *dev = device_create(vif_class, NULL, dev_num,
+                                           NULL, "vif_driver");
+        if (IS_ERR(dev)) {
+            ret = PTR_ERR(dev);
+            goto err_class;
+        }
+    }
+
+    vinput_ringbuf_init(&input_rb);
+    vinput_ringbuf_init(&output_rb);
+
+    ret = vinput_virtual_init(&output_rb);
+    if (ret)
+        goto err_device;
+
+    ret = vinput_input_init(&input_rb);
+    if (ret)
+        goto err_virtual;
 
     printk(KERN_INFO "Major = %d Minor = %d\n",
            MAJOR(dev_num),
@@ -181,11 +277,24 @@ static int vif_module_init(void)
     printk(KERN_INFO "vif_module_init: exit\n");
 
     return 0;
+
+err_virtual:
+    vinput_virtual_exit();
+err_device:
+    device_destroy(vif_class, dev_num);
+err_class:
+    class_destroy(vif_class);
+    cdev_del(&my_device.cdev);
+    unregister_chrdev_region(dev_num, 1);
+    return ret;
 }
 
 static void vif_module_exit(void)
 {
     printk(KERN_INFO "vif_module_exit: entry\n");
+
+    vinput_input_exit();
+    vinput_virtual_exit();
 
     device_destroy(vif_class, dev_num);
 
